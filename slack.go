@@ -72,6 +72,39 @@ func (ut UserTimezone) GetTimeIn(t time.Time) time.Time {
 	return t.In(loc)
 }
 
+func (ut UserTimezone) GetTimezoneOffset() string {
+	now := time.Now()
+
+	// Get the user's timezone location
+	userLoc, err := time.LoadLocation(ut.Timezone)
+	if err != nil {
+		log.Printf("Error loading timezone %s: %v", ut.Timezone, err)
+		return "?"
+	}
+
+	// Get the local timezone location
+	localLoc := now.Location()
+
+	// Get the same moment in both timezones
+	nowInUserTZ := now.In(userLoc)
+	nowInLocalTZ := now.In(localLoc)
+
+	// Calculate the offset difference in seconds, then convert to hours
+	_, userOffset := nowInUserTZ.Zone()
+	_, localOffset := nowInLocalTZ.Zone()
+
+	diffSeconds := userOffset - localOffset
+	diffHours := diffSeconds / 3600
+
+	if diffHours == 0 {
+		return "Same"
+	} else if diffHours > 0 {
+		return fmt.Sprintf("+%dh", diffHours)
+	} else {
+		return fmt.Sprintf("%dh", diffHours)
+	}
+}
+
 func getSlackToken() string {
 	token := os.Getenv("SLACK_BOT_TOKEN")
 	if token == "" {

@@ -9,6 +9,7 @@ A beautiful terminal UI application that displays your coworkers' current times 
 - 🔄 Auto-refreshing time display (updates every second)
 - 📊 Organized table view with status indicators
 - ⌨️ Simple keyboard controls
+- 🔍 Search functionality to find specific coworkers
 
 ## Prerequisites
 
@@ -44,8 +45,11 @@ go run .
 
 ### Controls
 
+- `/` - Start searching for coworkers
 - `r` - Refresh data from Slack
 - `q` or `Ctrl+C` - Quit the application
+- `Esc` - Clear search and return to full list
+- `Enter` - Apply search filter
 
 ## Slack Setup
 
@@ -68,6 +72,7 @@ The application shows:
 - **Current Time**: Real-time clock for each user
 - **Date**: Current date in user's timezone
 - **Status**: Time-based status (Morning, Afternoon, Evening, Night)
+- **Offset**: Hours difference from your local timezone (e.g., +3h, -5h, Same)
 
 ## Building
 
@@ -76,6 +81,11 @@ To build a binary:
 go build -o whattime .
 ```
 
-## Fully vibe coded
+## Search Functionality
 
-Used claude code.
+Press `/` to activate search mode and type to filter coworkers by:
+- Name (real name from Slack profile)
+- Username (Slack handle)
+- Timezone (e.g., "America/New_York")
+
+Search is case-insensitive and matches partial strings.

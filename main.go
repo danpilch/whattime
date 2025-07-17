@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -35,15 +36,24 @@ var (
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			Margin(1, 0)
+
+	searchStyle = lipgloss.NewStyle().
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.Color("240")).
+			Padding(0, 1).
+			Margin(0, 0, 1, 0)
 )
 
 type model struct {
 	table         table.Model
 	spinner       spinner.Model
+	search        textinput.Model
 	loading       bool
 	error         error
 	userTimezones []UserTimezone
+	allUsers      []UserTimezone
 	slackClient   *SlackClient
+	searchFocused bool
 }
 
 type tickMsg time.Time
@@ -71,6 +81,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loading = true
 			m.error = nil
 			cmds = append(cmds, m.loadUsers)
+		case key.Matches(msg, key.NewBinding(key.WithKeys("/"))):
+			if !m.searchFocused {
+				m.searchFocused = true
+				m.search.Focus()
+				m.table.Blur()
+				return m, tea.Batch(cmds...)
+			}
+		case key.Matches(msg, key.NewBinding(key.WithKeys("esc"))):
+			m.searchFocused = false
+			m.search.Blur()
+			m.table.Focus()
+			m.search.SetValue("")
+			m.filterUsers()
+		case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
+			if m.searchFocused {
+				m.searchFocused = false
+				m.search.Blur()
+				m.table.Focus()
+			}
+		}
+
+		if m.searchFocused {
+			m.search, cmd = m.search.Update(msg)
+			cmds = append(cmds, cmd)
+			m.filterUsers()
 		}
 
 	case tickMsg:
@@ -79,7 +114,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case loadCompleteMsg:
 		m.loading = false
-		m.userTimezones = []UserTimezone(msg)
+		m.allUsers = []UserTimezone(msg)
+		m.userTimezones = m.allUsers
 		m.updateTable()
 
 	case loadErrorMsg:
@@ -93,7 +129,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if !m.loading {
+	if !m.loading && !m.searchFocused {
 		m.table, cmd = m.table.Update(msg)
 		cmds = append(cmds, cmd)
 	}
@@ -116,6 +152,9 @@ func (m model) View() string {
 		return s.String()
 	}
 
+	s.WriteString(searchStyle.Render(fmt.Sprintf("🔍 Search: %s", m.search.View())))
+	s.WriteString("\n")
+
 	if m.loading {
 		s.WriteString(fmt.Sprintf("%s Loading coworker timezones...", m.spinner.View()))
 		s.WriteString("\n")
@@ -124,7 +163,11 @@ func (m model) View() string {
 		s.WriteString("\n")
 	}
 
-	s.WriteString(helpStyle.Render("Press 'r' to refresh, 'q' to quit"))
+	if m.searchFocused {
+		s.WriteString(helpStyle.Render("Press 'enter' to apply search, 'esc' to cancel"))
+	} else {
+		s.WriteString(helpStyle.Render("Press '/' to search, 'r' to refresh, 'q' to quit"))
+	}
 	return s.String()
 }
 
@@ -148,10 +191,32 @@ func (m *model) updateTable() {
 			timeStr,
 			dateStr,
 			statusEmoji,
+			user.GetTimezoneOffset(),
 		}
 	}
 
 	m.table.SetRows(rows)
+}
+
+func (m *model) filterUsers() {
+	searchTerm := strings.ToLower(m.search.Value())
+	if searchTerm == "" {
+		m.userTimezones = m.allUsers
+		m.updateTable()
+		return
+	}
+
+	var filtered []UserTimezone
+	for _, user := range m.allUsers {
+		if strings.Contains(strings.ToLower(user.Name), searchTerm) ||
+			strings.Contains(strings.ToLower(user.Username), searchTerm) ||
+			strings.Contains(strings.ToLower(user.Timezone), searchTerm) {
+			filtered = append(filtered, user)
+		}
+	}
+
+	m.userTimezones = filtered
+	m.updateTable()
 }
 
 func (m model) loadUsers() tea.Msg {
@@ -198,6 +263,12 @@ func initialModel() model {
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
+	// Initialize search input
+	searchInput := textinput.New()
+	searchInput.Placeholder = "Search by name, username, or timezone..."
+	searchInput.CharLimit = 156
+	searchInput.Width = 50
+
 	columns := []table.Column{
 		{Title: "Name", Width: 20},
 		{Title: "Username", Width: 15},
@@ -205,6 +276,7 @@ func initialModel() model {
 		{Title: "Current Time", Width: 12},
 		{Title: "Date", Width: 10},
 		{Title: "Status", Width: 15},
+		{Title: "Offset", Width: 8},
 	}
 
 	t := table.New(
@@ -228,6 +300,7 @@ func initialModel() model {
 	return model{
 		table:       t,
 		spinner:     s,
+		search:      searchInput,
 		loading:     true,
 		slackClient: slackClient,
 	}
