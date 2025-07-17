@@ -75,3 +75,7 @@ To build a binary:
 ```bash
 go build -o whattime .
 ```
+
+## Fully vibe coded
+
+Used claude code.
